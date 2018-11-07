@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 
 //引入模型对象
 const Users = require('../models/users');
+const Messages = require('../models/messages');
 
 //获取Router
 const Router = express.Router;
@@ -180,6 +181,61 @@ router.get('/userlist', (req, res) => {
       res.send({code: 1, msg: '获取用户列表异常, 请重新尝试'})
     })
 })
+
+//获取当前用户的聊天信息列表
+router.get('/msglist', async (req, res) => {
+  //获取cookie中的userid
+  const {userid} = req.cookies;
+  if(!userid) {
+    return res.json({code: 1, msg: '请先登录'})
+  }
+  try{
+    //找到所有和当前用户相关的聊天信息
+    const chatMsgs = await Messages.find({$or: [{from: userid}, {to: userid}]}, {__v: 0});
+
+    //找所有用户的头像和id
+    const result = await Users.find();
+    let users = {};
+
+    result.forEach(item => {
+      users[item._id] = {
+        username: item.username,
+        header: item.header
+      }
+    })
+    //返回响应
+    res.json({code: 0, data: {chatMsgs, users}});
+  } catch (e) {
+    res.json({"code": 3,
+      "msg": '网络不稳定,请重新试试'});
+  }
+})
+
+/*
+修改指定消息为已读
+ */
+router.post('/readmsg', (req, res) => {
+  // 得到请求中的from和to
+  const from = req.body.from
+  const to = req.cookies.userid
+  /*
+  更新数据库中的msg数据
+  参数1: 查询条件
+  参数2: 更新为指定的数据对象
+  参数3: 是否1次更新多条, 默认只更新一条
+  参数4: 更新完成的回调函数
+   */
+  Messages.update({from, to, read: false}, {$set: {read: true}}, {multi: true})
+    .then(doc => {
+      console.log('/readmsg', doc)
+      res.send({code: 0, data: doc.nModified}) // 更新的数量
+    })
+    .catch(error => {
+      console.error('查看消息列表异常', error)
+      res.send({code: 1, msg: '查看消息列表异常, 请重新尝试'})
+    })
+})
+
 
 //暴露出去
 module.exports = router;
